@@ -64,7 +64,7 @@ class Query(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"message": "Mommy Application is live!", "version": "v1"}
+    return {"message": "Mommy Application is live!", "version": "v2"}
 
 @app.post("/chat")
 def chat(query: Query):
