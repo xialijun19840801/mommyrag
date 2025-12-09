@@ -15,6 +15,7 @@ else:
     print("✅ OPENAI_API_KEY is set")
 
 # --- Lazy loading: Initialize RAG components on first use ---
+
 rag_chain = None
 
 def get_rag_chain():
@@ -47,13 +48,34 @@ Helpful Answer: """
         # RAG Chain using LCEL
         def format_docs(docs):
             return "\n\n".join([d.page_content for d in docs])
-        
-        rag_chain = (
-            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+
+        def docs_or_none(docs):
+            if len(docs) == 0:
+                return None
+            return "\n\n".join([d.page_content for d in docs])
+
+        fallback_prompt = ChatPromptTemplate.from_template("Answer the following question directly:\n\nQuestion: {question}\n\nAnswer:")
+
+        fallback_chain = fallback_prompt | llm | StrOutputParser()
+
+        retrieval_chain = retriever | docs_or_none
+
+        rag_chain = RunnableBranch(
+            # Case 1: Retrieval succeeded
+            (lambda x: x["context"] is not None,
+            {
+                "context": retrieval_chain,
+                "question": RunnablePassthrough(),
+            }
             | prompt
             | llm
             | StrOutputParser()
+            ),
+
+            # Case 2: Retrieval failed — fallback to ChatGPT
+            fallback_chain
         )
+
         print("✅ Mommy RAG Application is ready.")
     return rag_chain
 
