@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
@@ -66,6 +67,19 @@ Helpful Answer: """
 
 app = FastAPI()
 
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://www.babiesandi.com",
+        "https://babiesandi.com",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 class Query(BaseModel):
     question: str
 
@@ -99,7 +113,7 @@ def chat(query: Query):
             "i'm sorry",
             "sorry, i don't",
             "unable to answer",
-            "i'm not able to"
+            "i'm not able to",
             "i'm not sure"
         ]
         
