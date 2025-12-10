@@ -33,7 +33,7 @@ def get_rag_chain():
         
         # RAG Prompt template
         template = """Use the following pieces of context to answer the question.
-If you don't know the answer, fallback to ChatGPT.
+If you don't know the answer, say I don't know.
 
 Context: {context}
 
@@ -98,7 +98,9 @@ def chat(query: Query):
             "i can't answer",
             "i'm sorry",
             "sorry, i don't",
-            "unable to answer"
+            "unable to answer",
+            "i'm not able to"
+            "i'm not sure"
         ]
         
         # Check if answer contains any "don't know" phrases
