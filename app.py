@@ -17,9 +17,10 @@ else:
 # --- Lazy loading: Initialize RAG components on first use ---
 
 rag_chain = None
+fallback_chain = None
 
 def get_rag_chain():
-    global rag_chain
+    global rag_chain, fallback_chain
     if rag_chain is None:
         print("Loading RAG model and vector store...")
         embeddings = OpenAIEmbeddings()
@@ -32,7 +33,7 @@ def get_rag_chain():
         
         # RAG Prompt template
         template = """Use the following pieces of context to answer the question.
-If you don't know the answer, just say that you don't know, don't try to make up an answer.
+If you don't know the answer, fallback to ChatGPT.
 
 Context: {context}
 
@@ -49,35 +50,19 @@ Helpful Answer: """
         def format_docs(docs):
             return "\n\n".join([d.page_content for d in docs])
 
-        def docs_or_none(docs):
-            if len(docs) == 0:
-                return None
-            return "\n\n".join([d.page_content for d in docs])
-
-        fallback_prompt = ChatPromptTemplate.from_template("Answer the following question directly:\n\nQuestion: {question}\n\nAnswer:")
-
-        fallback_chain = fallback_prompt | llm | StrOutputParser()
-
-        retrieval_chain = retriever | docs_or_none
-
-        rag_chain = RunnableBranch(
-            # Case 1: Retrieval succeeded
-            (lambda x: x["context"] is not None,
-            {
-                "context": retrieval_chain,
-                "question": RunnablePassthrough(),
-            }
+        rag_chain = (
+            {"context": retriever | format_docs, "question": RunnablePassthrough()}
             | prompt
             | llm
             | StrOutputParser()
-            ),
-
-            # Case 2: Retrieval failed — fallback to ChatGPT
-            fallback_chain
         )
+        
+        # Fallback chain for direct ChatGPT when RAG doesn't know
+        fallback_prompt = ChatPromptTemplate.from_template("Answer the following question directly:\n\nQuestion: {question}\n\nAnswer:")
+        fallback_chain = fallback_prompt | llm | StrOutputParser()
 
         print("✅ Mommy RAG Application is ready.")
-    return rag_chain
+    return rag_chain, fallback_chain
 
 app = FastAPI()
 
@@ -92,9 +77,39 @@ def read_root():
 def chat(query: Query):
     try:
         # Lazy load RAG chain on first use
-        chain = get_rag_chain()
+        rag_chain, fallback_chain = get_rag_chain()
         print(f"Question: {query.question}")
-        answer = chain.invoke(query.question)
+        
+        # Try RAG first
+        answer = rag_chain.invoke(query.question)
+        print(f"Initial RAG answer: {answer}")
+        
+        # Check if answer indicates "I don't know" - fallback to ChatGPT
+        answer_lower = answer.lower().strip()
+        dont_know_phrases = [
+            "i don't know",
+            "i do not know",
+            "don't know",
+            "i don't have",
+            "i do not have",
+            "i'm sorry, i don't know",
+            "i don't have information",
+            "i cannot answer",
+            "i can't answer",
+            "i'm sorry",
+            "sorry, i don't",
+            "unable to answer"
+        ]
+        
+        # Check if answer contains any "don't know" phrases
+        should_fallback = any(phrase in answer_lower for phrase in dont_know_phrases)
+        print(f"Should fallback: {should_fallback}")
+        
+        if should_fallback:
+            print("RAG didn't know, falling back to ChatGPT...")
+            answer = fallback_chain.invoke(query.question)
+            print(f"ChatGPT fallback answer: {answer}")
+        
         return {"answer": f"Helpful Answer: V1 {answer}"}
     except Exception as e:
         # Return error message
